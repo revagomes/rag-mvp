@@ -84,10 +84,15 @@ def _normalize(text: str) -> str:
 
 def safe_stem(name: str) -> str:
     """Make a filesystem- and RAG-friendly stem from an MHTML filename."""
-    stem = Path(name).stem
+    base = Path(name).name
+    # Drop a trailing .ext only when a real name precedes the dot; this avoids
+    # Path.stem's quirk of treating ".mhtml" (extension only) as a full stem.
+    dot = base.rfind(".")
+    stem = base[:dot] if dot > 0 else base
     stem = stem.replace("_", " ")
     stem = re.sub(r"\s+", "_", stem.strip())
     stem = re.sub(r"[^A-Za-z0-9._-]", "", stem)
+    stem = stem.strip("._-")
     return stem or "document"
 
 
