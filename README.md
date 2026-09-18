@@ -272,6 +272,62 @@ $response = \Drupal::httpClient()->post('http://rag-host:8000/query', [
 $data = json_decode((string) $response->getBody(), TRUE);
 ```
 
+#### `/query` request and response contract
+
+Request body:
+
+| Field | Type | Required | Notes |
+|---|---|---|---|
+| `question` | string | yes | max 4 000 chars |
+| `top_k` | integer | no | 1–50; defaults to `RAG_TOP_K` (4) |
+
+Response body (`200 OK`):
+
+```json
+{
+  "question": "What is RAG and why is it useful?",
+  "answer": "Retrieval-Augmented Generation combines a retrieval step with a language model so answers are grounded in your documents...",
+  "llm_backend": "ollama",
+  "chunks": [
+    {
+      "source": "rag_docs/example_document.md",
+      "chunk_index": 3,
+      "score": 0.669,
+      "text": "Retrieval-Augmented Generation (RAG) is a technique that..."
+    }
+  ]
+}
+```
+
+Field notes for the consuming app:
+
+- **`answer`** — the text to render in the chat bubble. With `RAG_LLM_BACKEND=none`
+  this is a placeholder (retrieval-only mode); with `ollama`/`openai` it is the
+  generated answer.
+- **`chunks`** — the retrieved sources behind the answer. Use these to render
+  citations / "sources" under the reply. `score` is similarity in `0.0–1.0`
+  (higher = closer); `source` is the document, `chunk_index` its position within
+  it. The array is empty when nothing has been ingested yet.
+- **`llm_backend`** — which backend produced the answer; handy for showing a
+  "generated vs. retrieval-only" hint in the UI.
+
+Status codes the client should handle: `200` success · `401` missing/malformed
+key · `403` invalid key · `422` invalid body (e.g. question too long) · `502`
+LLM backend unavailable.
+
+Consuming the response in Drupal:
+
+```php
+// $data from the Guzzle call above.
+$answer = $data['answer'];
+$citations = array_map(static function (array $chunk): array {
+  return [
+    'source' => basename($chunk['source']),
+    'score' => $chunk['score'],
+  ];
+}, $data['chunks']);
+```
+
 > The API key is only meaningful over **TLS** — otherwise it can be sniffed in
 > transit. Terminate TLS at a reverse proxy (nginx/Caddy/Traefik) in front of
 > the server, or keep the service on a private network. The app speaks plain
