@@ -1,0 +1,25 @@
+Retrieval-Augmented Generation (RAG) Notes
+
+RAG is a technique that combines a retrieval system with a generative language
+model. Instead of relying only on knowledge baked into the model's weights, a
+RAG system first retrieves relevant documents from an external knowledge base
+and then passes them to the model as context.
+
+Why RAG is useful:
+- It grounds answers in specific source documents, reducing hallucination.
+- It lets you update knowledge by changing the documents, not retraining a model.
+- It can cite sources, which improves trust and verifiability.
+
+The typical RAG pipeline has these stages:
+1. Ingestion: documents are loaded, split into chunks, and embedded into vectors.
+2. Storage: the vectors are stored in a vector database for fast similarity search.
+3. Retrieval: an incoming question is embedded and the most similar chunks are found.
+4. Generation: the retrieved chunks are given to a language model to produce an answer.
+
+Chunking matters a lot. Chunks that are too large dilute relevance, while chunks
+that are too small lose context. A common starting point is a few hundred tokens
+per chunk with a small overlap between consecutive chunks to preserve context.
+
+Embeddings turn text into numeric vectors so that semantically similar text ends
+up close together in vector space. Cosine similarity is the most common measure
+used to compare embedding vectors.

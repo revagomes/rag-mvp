@@ -1,0 +1,33 @@
+[project]
+name = "rag-mvp"
+version = "0.1.0"
+description = "A minimal, local-first Retrieval-Augmented Generation (RAG) server for testing with local documents."
+readme = "README.md"
+requires-python = ">=3.10"
+dependencies = [
+    "fastapi>=0.110",
+    "uvicorn[standard]>=0.27",
+    "pydantic>=2.6",
+    "pydantic-settings>=2.2",
+    "chromadb>=0.5.0",
+    "sentence-transformers>=2.7",
+    "pypdf>=4.2",
+    "python-multipart>=0.0.9",
+    "httpx>=0.27",
+    "tiktoken>=0.7",
+]
+
+[project.optional-dependencies]
+openai = ["openai>=1.30"]
+dev = ["pytest>=8.0", "ruff>=0.4"]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["rag_mvp"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py310"

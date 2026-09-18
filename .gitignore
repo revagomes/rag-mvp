@@ -1,0 +1,30 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.eggs/
+build/
+dist/
+.venv/
+venv/
+env/
+
+# Environment
+.env
+
+# RAG data / persisted vector store
+storage/
+*.sqlite3
+
+# Caches
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+
+# Model caches (sentence-transformers / HF)
+.cache/
+
+# OS / editor
+.DS_Store
+.idea/
+.vscode/
