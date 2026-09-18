@@ -161,6 +161,32 @@ rag-mvp/
 
 ---
 
+## Testing
+
+```bash
+uv pip install -e ".[dev]"
+pytest                       # run the suite
+pytest --cov --cov-report=term-missing   # with coverage
+```
+
+The suite is deliberately focused on the **deterministic core** and runs fully
+offline — no model downloads, no network. Fakes for the embedder, vector store,
+and LLM are injected via `RagPipeline(..., embedder=, store=, llm=)`.
+
+Coverage is ~94%. The uncovered lines are, by design, the thin wrappers over
+external systems:
+
+- `embeddings.py` — the OpenAI embedder and the real `sentence-transformers`
+  model load. Verified by running against the actual model/API.
+- `llm.py` — the OpenAI chat backend (the Ollama backend *is* tested with a
+  faked HTTP layer). Verified against a live Ollama server.
+- a PDF text-extraction line and one branch in the chunker's inner loop.
+
+These are I/O-bound integration points where a unit test would only assert that
+mocks return what they were told to. They are exercised by the manual
+CLI/Ollama runs documented above instead. See `[tool.coverage.run].omit` in
+`pyproject.toml` (the CLI is excluded for the same reason).
+
 ## How it works
 
 1. **Ingest** — documents are loaded (`.txt`, `.md`, `.pdf`), normalized, and

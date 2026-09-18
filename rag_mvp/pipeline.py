@@ -40,13 +40,26 @@ class QueryResult:
 class RagPipeline:
     """Orchestrates the full retrieval-augmented generation flow."""
 
-    def __init__(self, settings: Settings | None = None) -> None:
+    def __init__(
+        self,
+        settings: Settings | None = None,
+        *,
+        embedder: Embedder | None = None,
+        store: VectorStore | None = None,
+        llm: LLM | None = None,
+    ) -> None:
+        """Construct the pipeline.
+
+        Dependencies are built from ``settings`` by default, but each may be
+        supplied directly. Injecting them keeps tests fast and offline: a fake
+        embedder and an in-memory store avoid model downloads and network I/O.
+        """
         self.settings = settings or get_settings()
-        self.embedder: Embedder = build_embedder(self.settings)
-        self.store = VectorStore(
+        self.embedder: Embedder = embedder or build_embedder(self.settings)
+        self.store = store or VectorStore(
             self.settings.storage_dir, self.settings.collection_name
         )
-        self.llm: LLM = build_llm(self.settings)
+        self.llm: LLM = llm or build_llm(self.settings)
 
     # ---- Ingestion ----
 

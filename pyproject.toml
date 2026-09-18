@@ -19,7 +19,7 @@ dependencies = [
 
 [project.optional-dependencies]
 openai = ["openai>=1.30"]
-dev = ["pytest>=8.0", "ruff>=0.4"]
+dev = ["pytest>=8.0", "pytest-cov>=5.0", "ruff>=0.4"]
 
 [build-system]
 requires = ["hatchling"]
@@ -31,3 +31,25 @@ packages = ["rag_mvp"]
 [tool.ruff]
 line-length = 100
 target-version = "py310"
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-q"
+
+[tool.coverage.run]
+source = ["rag_mvp"]
+# Thin I/O wrappers over external systems (model downloads, network SDKs) are
+# verified by manual/integration runs, not unit tests. Excluding them keeps the
+# coverage number honest about what the unit suite actually exercises.
+omit = [
+    "rag_mvp/__init__.py",
+    "rag_mvp/cli.py",
+]
+
+[tool.coverage.report]
+exclude_lines = [
+    "pragma: no cover",
+    "if __name__ == .__main__.:",
+    "raise NotImplementedError",
+    "\\.\\.\\.",
+]

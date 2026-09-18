@@ -20,6 +20,9 @@ storage/
 .pytest_cache/
 .ruff_cache/
 .mypy_cache/
+.coverage
+htmlcov/
+coverage.xml
 
 # Model caches (sentence-transformers / HF)
 .cache/
