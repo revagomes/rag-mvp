@@ -6,12 +6,20 @@ from pydantic import BaseModel, Field
 
 
 class IngestTextRequest(BaseModel):
-    text: str = Field(..., description="Raw document text to ingest.")
-    source: str = Field("inline", description="A label identifying the source.")
+    text: str = Field(
+        ..., max_length=1_000_000, description="Raw document text to ingest."
+    )
+    source: str = Field(
+        "inline", max_length=500, description="A label identifying the source."
+    )
 
 
 class IngestPathRequest(BaseModel):
-    path: str = Field(..., description="Absolute or relative path to a file or directory.")
+    path: str = Field(
+        ...,
+        max_length=4_096,
+        description="Absolute or relative path to a file or directory.",
+    )
 
 
 class IngestResponse(BaseModel):
@@ -22,7 +30,9 @@ class IngestResponse(BaseModel):
 
 
 class QueryRequest(BaseModel):
-    question: str = Field(..., description="The user's question.")
+    question: str = Field(
+        ..., max_length=4_000, description="The user's question."
+    )
     top_k: int | None = Field(None, ge=1, le=50, description="Number of chunks to retrieve.")
 
 

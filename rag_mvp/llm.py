@@ -82,14 +82,14 @@ class OllamaLLM:
 class OpenAILLM:
     """Generate answers with the OpenAI chat completions API."""
 
-    def __init__(self, model: str, api_key: str | None) -> None:
+    def __init__(self, model: str, api_key: str | None, timeout: float = 120.0) -> None:
         if not api_key:
             raise RuntimeError(
                 "OPENAI_API_KEY is required for the OpenAI LLM backend."
             )
         from openai import OpenAI
 
-        self._client = OpenAI(api_key=api_key)
+        self._client = OpenAI(api_key=api_key, timeout=timeout)
         self._model = model
 
     def generate(self, question: str, context: str) -> str:

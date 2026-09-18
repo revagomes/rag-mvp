@@ -63,6 +63,12 @@ class TestIngestText:
         resp = client.post("/ingest/text", json={"source": "x"})
         assert resp.status_code == 422
 
+    def test_ingest_text_oversized_is_422(self, client):
+        resp = client.post(
+            "/ingest/text", json={"text": "x" * 1_000_001, "source": "big"}
+        )
+        assert resp.status_code == 422
+
 
 class TestIngestPath:
     def test_ingest_path_missing_absolute_outside_root_is_403(self, client):
@@ -125,6 +131,10 @@ class TestQuery:
     def test_query_top_k_validation(self, client):
         # top_k must be >= 1
         resp = client.post("/query", json={"question": "x", "top_k": 0})
+        assert resp.status_code == 422
+
+    def test_query_oversized_question_is_422(self, client):
+        resp = client.post("/query", json={"question": "x" * 4_001})
         assert resp.status_code == 422
 
     def test_query_maps_backend_runtime_error_to_502(
