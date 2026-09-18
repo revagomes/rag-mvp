@@ -196,3 +196,105 @@ class TestSecretNonLeakage:
         client_with_key.post("/ingest/text", json={"text": "content", "source": "s"})
         body = client_with_key.post("/query", json={"question": "content"}).text
         assert self._FAKE_KEY not in body
+
+
+
+class TestAuth:
+    """Bearer API-key authentication on protected endpoints."""
+
+    _KEYS = "key-one,key-two"
+
+    @pytest.fixture
+    def keyed_client(self, fake_embedder, fake_store, fake_llm, tmp_path, monkeypatch):
+        ingest_root = tmp_path / "root"
+        ingest_root.mkdir()
+        settings = Settings(
+            chunk_size=100,
+            chunk_overlap=20,
+            top_k=3,
+            llm_backend="none",
+            ingest_root=str(ingest_root),
+            api_keys=self._KEYS,
+        )
+        monkeypatch.setattr(server, "get_settings", lambda: settings)
+        pipeline = RagPipeline(
+            settings, embedder=fake_embedder, store=fake_store, llm=fake_llm
+        )
+        server._pipeline = pipeline
+        with TestClient(server.app) as c:
+            yield c
+        server._pipeline = None
+
+    def test_settings_auth_enabled(self):
+        assert Settings(api_keys="k1,k2").auth_enabled is True
+        assert Settings(api_keys="").auth_enabled is False
+        assert Settings(api_keys="  ,  ").auth_enabled is False
+
+    def test_settings_parsed_api_keys_trims_and_dedupes(self):
+        assert Settings(api_keys=" a , b ,a ").parsed_api_keys() == {"a", "b"}
+
+    # --- auth disabled (default client fixture has no keys) ---
+
+    def test_query_open_when_auth_disabled(self, client):
+        resp = client.post("/query", json={"question": "anything"})
+        assert resp.status_code == 200
+
+    # --- auth enabled ---
+
+    def test_query_without_header_is_401(self, keyed_client):
+        resp = keyed_client.post("/query", json={"question": "x"})
+        assert resp.status_code == 401
+        assert resp.headers.get("WWW-Authenticate") == "Bearer"
+
+    def test_query_with_wrong_key_is_403(self, keyed_client):
+        resp = keyed_client.post(
+            "/query",
+            json={"question": "x"},
+            headers={"Authorization": "Bearer wrong-key"},
+        )
+        assert resp.status_code == 403
+
+    def test_query_with_valid_key_is_200(self, keyed_client):
+        resp = keyed_client.post(
+            "/query",
+            json={"question": "x"},
+            headers={"Authorization": "Bearer key-one"},
+        )
+        assert resp.status_code == 200
+
+    def test_second_valid_key_also_works(self, keyed_client):
+        resp = keyed_client.post(
+            "/query",
+            json={"question": "x"},
+            headers={"Authorization": "Bearer key-two"},
+        )
+        assert resp.status_code == 200
+
+    def test_malformed_scheme_is_401(self, keyed_client):
+        resp = keyed_client.post(
+            "/query",
+            json={"question": "x"},
+            headers={"Authorization": "Basic key-one"},
+        )
+        assert resp.status_code == 401
+
+    def test_all_mutating_endpoints_protected(self, keyed_client):
+        # Each protected endpoint rejects an unauthenticated request.
+        assert keyed_client.post(
+            "/ingest/text", json={"text": "x", "source": "s"}
+        ).status_code == 401
+        assert keyed_client.post(
+            "/ingest/path", json={"path": "x.txt"}
+        ).status_code == 401
+        assert keyed_client.post("/reset").status_code == 401
+
+    def test_ingest_and_reset_work_with_valid_key(self, keyed_client):
+        h = {"Authorization": "Bearer key-one"}
+        assert keyed_client.post(
+            "/ingest/text", json={"text": "hello world", "source": "s"}, headers=h
+        ).status_code == 200
+        assert keyed_client.post("/reset", headers=h).status_code == 200
+
+    def test_health_open_even_when_auth_enabled(self, keyed_client):
+        # /health must stay reachable without a key (liveness probes).
+        assert keyed_client.get("/health").status_code == 200

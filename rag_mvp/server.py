@@ -15,7 +15,7 @@ from __future__ import annotations
 from contextlib import asynccontextmanager
 import logging
 
-from fastapi import FastAPI, HTTPException
+from fastapi import Depends, FastAPI, Header, HTTPException
 
 from .config import get_settings
 from .pipeline import RagPipeline
@@ -28,11 +28,38 @@ from .schemas import (
     QueryResponse,
     RetrievedChunkModel,
 )
-from .security import PathNotAllowedError, resolve_within_root
+from .security import (
+    PathNotAllowedError,
+    extract_bearer_token,
+    is_authorized,
+    resolve_within_root,
+)
 
 logger = logging.getLogger("rag_mvp")
 
 _pipeline: RagPipeline | None = None
+
+
+def require_api_key(authorization: str | None = Header(default=None)) -> None:
+    """FastAPI dependency enforcing Bearer API-key auth on protected endpoints.
+
+    No-op when no keys are configured (auth disabled). Otherwise requires a
+    valid ``Authorization: Bearer <key>`` header: 401 if missing/malformed,
+    403 if a token is present but not recognized.
+    """
+    settings = get_settings()
+    allowed = settings.parsed_api_keys()
+    if not allowed:
+        return  # auth disabled
+    token = extract_bearer_token(authorization)
+    if token is None:
+        raise HTTPException(
+            status_code=401,
+            detail="Missing or malformed Authorization header.",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
+    if not is_authorized(token, allowed):
+        raise HTTPException(status_code=403, detail="Invalid API key.")
 
 
 def get_pipeline() -> RagPipeline:
@@ -47,6 +74,12 @@ def get_pipeline() -> RagPipeline:
 async def lifespan(app: FastAPI):  # noqa: ARG001
     # Warm up the pipeline (loads embedding model) at startup.
     get_pipeline()
+    if not get_settings().auth_enabled:
+        logger.warning(
+            "API authentication is DISABLED (RAG_API_KEYS is empty). "
+            "This is fine for local use, but do not expose this server on a "
+            "network interface without setting RAG_API_KEYS."
+        )
     yield
 
 
@@ -70,7 +103,11 @@ def health() -> HealthResponse:
     )
 
 
-@app.post("/ingest/text", response_model=IngestResponse)
+@app.post(
+    "/ingest/text",
+    response_model=IngestResponse,
+    dependencies=[Depends(require_api_key)],
+)
 def ingest_text(req: IngestTextRequest) -> IngestResponse:
     pipeline = get_pipeline()
     result = pipeline.ingest_text(req.text, source=req.source)
@@ -82,7 +119,11 @@ def ingest_text(req: IngestTextRequest) -> IngestResponse:
     )
 
 
-@app.post("/ingest/path", response_model=IngestResponse)
+@app.post(
+    "/ingest/path",
+    response_model=IngestResponse,
+    dependencies=[Depends(require_api_key)],
+)
 def ingest_path(req: IngestPathRequest) -> IngestResponse:
     pipeline = get_pipeline()
     settings = get_settings()
@@ -109,7 +150,11 @@ def ingest_path(req: IngestPathRequest) -> IngestResponse:
     )
 
 
-@app.post("/query", response_model=QueryResponse)
+@app.post(
+    "/query",
+    response_model=QueryResponse,
+    dependencies=[Depends(require_api_key)],
+)
 def query(req: QueryRequest) -> QueryResponse:
     pipeline = get_pipeline()
     try:
@@ -138,7 +183,7 @@ def query(req: QueryRequest) -> QueryResponse:
     )
 
 
-@app.post("/reset")
+@app.post("/reset", dependencies=[Depends(require_api_key)])
 def reset() -> dict[str, str]:
     pipeline = get_pipeline()
     pipeline.reset()

@@ -58,6 +58,19 @@ class Settings(BaseSettings):
     # directory, which is where the server is normally launched.
     ingest_root: str = "."
 
+    # Comma-separated API keys accepted via `Authorization: Bearer <key>` on
+    # protected endpoints. Empty (the default) disables auth entirely, which is
+    # fine for local/CLI use but MUST NOT be used on a network interface.
+    api_keys: str = ""
+
+    def parsed_api_keys(self) -> set[str]:
+        """Return the configured API keys as a set of non-empty, trimmed strings."""
+        return {k.strip() for k in self.api_keys.split(",") if k.strip()}
+
+    @property
+    def auth_enabled(self) -> bool:
+        return bool(self.parsed_api_keys())
+
 
 @lru_cache
 def get_settings() -> Settings:

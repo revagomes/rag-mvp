@@ -71,3 +71,51 @@ class TestResolveWithinRoot:
         except PathNotAllowedError:
             return
         assert root.resolve() in resolved.parents or resolved == root.resolve()
+
+
+
+from rag_mvp.security import extract_bearer_token, is_authorized
+
+
+class TestExtractBearerToken:
+    def test_valid_bearer(self):
+        assert extract_bearer_token("Bearer abc123") == "abc123"
+
+    def test_scheme_is_case_insensitive(self):
+        assert extract_bearer_token("bearer abc123") == "abc123"
+        assert extract_bearer_token("BEARER abc123") == "abc123"
+
+    def test_none_header_returns_none(self):
+        assert extract_bearer_token(None) is None
+
+    def test_empty_header_returns_none(self):
+        assert extract_bearer_token("") is None
+
+    def test_wrong_scheme_returns_none(self):
+        assert extract_bearer_token("Basic abc123") is None
+
+    def test_missing_token_returns_none(self):
+        assert extract_bearer_token("Bearer") is None
+        assert extract_bearer_token("Bearer ") is None
+
+    def test_surrounding_whitespace_trimmed(self):
+        assert extract_bearer_token("Bearer   abc123  ") == "abc123"
+
+
+class TestIsAuthorized:
+    def test_matching_key_authorized(self):
+        assert is_authorized("k1", {"k1", "k2"}) is True
+
+    def test_non_matching_key_rejected(self):
+        assert is_authorized("nope", {"k1", "k2"}) is False
+
+    def test_none_token_rejected(self):
+        assert is_authorized(None, {"k1"}) is False
+
+    def test_empty_allowed_set_rejects_everything(self):
+        assert is_authorized("k1", set()) is False
+
+    def test_multi_key_any_match_authorized(self):
+        keys = {"alpha", "beta", "gamma"}
+        assert is_authorized("beta", keys) is True
+        assert is_authorized("gamma", keys) is True
