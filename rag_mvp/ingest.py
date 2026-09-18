@@ -83,25 +83,61 @@ def chunk_text(
 
 
 def _sliding_windows(text: str, size: int, overlap: int) -> list[str]:
-    """Produce overlapping windows, preferring to break on whitespace."""
-    windows: list[str] = []
-    start = 0
-    length = len(text)
-    step = size - overlap
+    """Produce overlapping windows built from whole words.
 
-    while start < length:
-        end = min(start + size, length)
-        # Try to end on a whitespace boundary to avoid splitting words.
-        if end < length:
-            boundary = text.rfind(" ", start + step, end)
-            if boundary != -1 and boundary > start:
-                end = boundary
-        window = text[start:end].strip()
-        if window:
-            windows.append(window)
-        if end >= length:
+    The text is split on whitespace and windows are assembled word-by-word so a
+    word is never split across a boundary. ``size`` is a character budget per
+    window; ``overlap`` is the approximate number of trailing characters carried
+    into the next window. A single token longer than ``size`` is emitted on its
+    own (and hard-split only as an unavoidable last resort).
+    """
+    words = text.split()
+    if not words:
+        return []
+
+    windows: list[str] = []
+    i = 0
+    n = len(words)
+
+    while i < n:
+        current: list[str] = []
+        current_len = 0
+        j = i
+        while j < n:
+            word = words[j]
+            added = len(word) + (1 if current else 0)
+            if current and current_len + added > size:
+                break
+            # A lone word longer than the whole budget: hard-split it.
+            if not current and len(word) > size:
+                for piece_start in range(0, len(word), size):
+                    windows.append(word[piece_start:piece_start + size])
+                j += 1
+                i = j
+                current = []
+                current_len = 0
+                break
+            current.append(word)
+            current_len += added
+            j += 1
+        else:
+            # inner loop exhausted words without breaking
+            if current:
+                windows.append(" ".join(current))
             break
-        start = max(end - overlap, start + 1)
+
+        if current:
+            windows.append(" ".join(current))
+            # Advance start so the next window overlaps by ~overlap characters
+            # worth of trailing words, without ever moving backwards.
+            back = 0
+            k = j
+            while k > i + 1 and back < overlap:
+                back += len(words[k - 1]) + 1
+                k -= 1
+            i = k
+        # If current was empty we already advanced i during the hard-split.
+
     return windows
 
 
