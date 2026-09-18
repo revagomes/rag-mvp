@@ -143,12 +143,16 @@ class TestQuery:
         client.post("/ingest/text", json={"text": "content", "source": "s"})
 
         def boom(question, top_k=None):  # noqa: ARG001
-            raise RuntimeError("Ollama request failed (connection refused)")
+            raise RuntimeError("Ollama request failed (connection refused) at http://localhost:11434")
 
         monkeypatch.setattr(server.get_pipeline(), "query", boom)
         resp = client.post("/query", json={"question": "x"})
         assert resp.status_code == 502
-        assert "Ollama" in resp.json()["detail"]
+        detail = resp.json()["detail"]
+        # Generic message; internal details (URL, backend name) must not leak.
+        assert detail == "The language model backend is unavailable."
+        assert "Ollama" not in detail
+        assert "11434" not in detail
 
 
 class TestReset:
@@ -159,3 +163,36 @@ class TestReset:
         assert resp.status_code == 200
         assert resp.json()["status"] == "cleared"
         assert client.get("/health").json()["documents_in_store"] == 0
+
+
+class TestSecretNonLeakage:
+    """Lock in that the OpenAI API key is never reflected to clients."""
+
+    _FAKE_KEY = "sk-test-SECRET-must-not-leak-123456"
+
+    @pytest.fixture
+    def client_with_key(self, fake_embedder, fake_store, fake_llm, monkeypatch):
+        settings = Settings(
+            chunk_size=100,
+            chunk_overlap=20,
+            top_k=3,
+            llm_backend="none",
+            openai_api_key=self._FAKE_KEY,
+        )
+        monkeypatch.setattr(server, "get_settings", lambda: settings)
+        pipeline = RagPipeline(
+            settings, embedder=fake_embedder, store=fake_store, llm=fake_llm
+        )
+        server._pipeline = pipeline
+        with TestClient(server.app) as c:
+            yield c
+        server._pipeline = None
+
+    def test_health_does_not_expose_key(self, client_with_key):
+        body = client_with_key.get("/health").text
+        assert self._FAKE_KEY not in body
+
+    def test_query_response_does_not_expose_key(self, client_with_key):
+        client_with_key.post("/ingest/text", json={"text": "content", "source": "s"})
+        body = client_with_key.post("/query", json={"question": "content"}).text
+        assert self._FAKE_KEY not in body

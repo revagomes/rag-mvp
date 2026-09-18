@@ -13,6 +13,7 @@ Run with:  uvicorn rag_mvp.server:app --reload
 from __future__ import annotations
 
 from contextlib import asynccontextmanager
+import logging
 
 from fastapi import FastAPI, HTTPException
 
@@ -28,6 +29,8 @@ from .schemas import (
     RetrievedChunkModel,
 )
 from .security import PathNotAllowedError, resolve_within_root
+
+logger = logging.getLogger("rag_mvp")
 
 _pipeline: RagPipeline | None = None
 
@@ -112,8 +115,13 @@ def query(req: QueryRequest) -> QueryResponse:
     try:
         result = pipeline.query(req.question, top_k=req.top_k)
     except RuntimeError as exc:
-        # e.g. Ollama not running / OpenAI key missing
-        raise HTTPException(status_code=502, detail=str(exc)) from exc
+        # Log the detailed cause server-side, but do not expose internal
+        # details (backend URLs, config hints) to the client.
+        logger.warning("LLM backend error during /query: %s", exc)
+        raise HTTPException(
+            status_code=502,
+            detail="The language model backend is unavailable.",
+        ) from exc
     return QueryResponse(
         question=result.question,
         answer=result.answer,
