@@ -31,3 +31,6 @@ coverage.xml
 .DS_Store
 .idea/
 .vscode/
+
+# Agent knowledge store (internal, not a project deliverable)
+.ai/
