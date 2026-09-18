@@ -166,6 +166,7 @@ vectors from different models are not comparable.
 | `RAG_STORAGE_DIR` | `./storage` | where Chroma persists data |
 | `RAG_COLLECTION_NAME` | `documents` | Chroma collection name |
 | `RAG_INGEST_ROOT` | `.` | filesystem root `/ingest/path` is confined to |
+| `RAG_API_KEYS` | (empty) | comma-separated Bearer keys; empty disables auth |
 
 ---
 
@@ -235,10 +236,56 @@ localhost.
   `502` without internal URLs or config hints. Tests lock these in.
 - **Backend timeouts** — both the Ollama and OpenAI calls use request timeouts.
 
+### Authentication
+
+Protected endpoints (`/query`, `/ingest/text`, `/ingest/path`, `/reset`) support
+opt-in **Bearer API-key** authentication for server-to-server use. `/health`
+stays open for liveness probes.
+
+- Set one or more keys via `RAG_API_KEYS` (comma-separated for rotation or
+  multiple consumers). Generate a strong key: `openssl rand -hex 32`.
+- When `RAG_API_KEYS` is **empty, auth is disabled** — convenient for local/CLI
+  use. The server logs a warning at startup in that case.
+- Requests must send `Authorization: Bearer <key>`. Missing/malformed → `401`;
+  present but unrecognized → `403`. Keys are compared in constant time.
+
+```bash
+export RAG_API_KEYS="$(openssl rand -hex 32)"
+uvicorn rag_mvp.server:app --host 127.0.0.1 --port 8000
+
+curl -X POST localhost:8000/query \
+  -H "Authorization: Bearer $RAG_API_KEYS" \
+  -H 'Content-Type: application/json' \
+  -d '{"question": "what is RAG?"}'
+```
+
+This is designed for a **server-to-server** caller (e.g. a Drupal backend) that
+holds the key safely. From Drupal (Guzzle):
+
+```php
+$response = \Drupal::httpClient()->post('http://rag-host:8000/query', [
+  'headers' => [
+    'Authorization' => 'Bearer ' . $rag_api_key, // from settings/secret store
+  ],
+  'json' => ['question' => $question, 'top_k' => 4],
+]);
+$data = json_decode((string) $response->getBody(), TRUE);
+```
+
+> The API key is only meaningful over **TLS** — otherwise it can be sniffed in
+> transit. Terminate TLS at a reverse proxy (nginx/Caddy/Traefik) in front of
+> the server, or keep the service on a private network. The app speaks plain
+> HTTP by design; TLS is a deployment concern.
+>
+> Do **not** embed the key in browser/JavaScript code — anything the browser
+> receives is readable by end users. Browser-facing chat should call your
+> Drupal backend, which then calls this API. A browser talking directly to the
+> RAG needs a different model (short-lived per-user tokens + CORS), which this
+> static-key scheme intentionally does not cover.
+
 ### Known limitations (by design, for an MVP)
-- **No authentication** — every endpoint is unauthenticated. Do not bind the
-  server to a public interface. Keep it on `localhost` or put it behind your own
-  auth proxy.
+- **Transport security is external** — the app serves plain HTTP; put it behind
+  a TLS-terminating proxy or on a trusted network.
 - **Prompt injection via documents** — ingested content is placed into the LLM
   prompt as context. A malicious document could contain instructions that try
   to steer the model (e.g. "ignore previous instructions"). Retrieved text is
