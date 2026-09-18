@@ -165,6 +165,7 @@ vectors from different models are not comparable.
 | `RAG_TOP_K` | `4` | chunks retrieved per query |
 | `RAG_STORAGE_DIR` | `./storage` | where Chroma persists data |
 | `RAG_COLLECTION_NAME` | `documents` | Chroma collection name |
+| `RAG_INGEST_ROOT` | `.` | filesystem root `/ingest/path` is confined to |
 
 ---
 
@@ -214,6 +215,47 @@ These are I/O-bound integration points where a unit test would only assert that
 mocks return what they were told to. They are exercised by the manual
 CLI/Ollama runs documented above instead. See `[tool.coverage.run].omit` in
 `pyproject.toml` (the CLI is excluded for the same reason).
+
+## Security
+
+This is an MVP intended for **local, single-user** use. It has been through a
+lightweight hardening pass, but review the following before exposing it beyond
+localhost.
+
+### What is hardened
+- **Path containment** — `/ingest/path` only accepts paths inside
+  `RAG_INGEST_ROOT` (default: the current working directory). Traversal
+  (`../`), absolute paths outside the root, and symlinks escaping the root are
+  rejected with `403`. This prevents reading arbitrary files (e.g. `/etc/passwd`,
+  `~/.ssh/id_rsa`) and exfiltrating them via `/query`.
+- **Bounded inputs** — request fields have maximum lengths (text 1 MB, question
+  4 000 chars, path 4 096 chars) so a single request cannot exhaust memory.
+- **No secret leakage** — the OpenAI API key is never returned by any endpoint;
+  backend errors are logged server-side and surface to clients as a generic
+  `502` without internal URLs or config hints. Tests lock these in.
+- **Backend timeouts** — both the Ollama and OpenAI calls use request timeouts.
+
+### Known limitations (by design, for an MVP)
+- **No authentication** — every endpoint is unauthenticated. Do not bind the
+  server to a public interface. Keep it on `localhost` or put it behind your own
+  auth proxy.
+- **Prompt injection via documents** — ingested content is placed into the LLM
+  prompt as context. A malicious document could contain instructions that try
+  to steer the model (e.g. "ignore previous instructions"). Retrieved text is
+  data, not a trusted instruction source; treat answers over untrusted corpora
+  accordingly. Full mitigation (instruction/data separation, output filtering)
+  is out of scope for this MVP.
+- **Dependency advisories** — run an audit periodically:
+  ```bash
+  uv pip install pip-audit && pip-audit
+  ```
+  As of writing, `pip-audit` reports advisories against `chromadb` that all
+  concern its **client/server deployment mode** (the `/api/v2/...` HTTP API,
+  RBAC providers, and multi-tenant isolation). This project uses ChromaDB in
+  **embedded `PersistentClient` mode** — there is no Chroma server, HTTP API,
+  tenant, or auth layer — so that attack surface is not exposed here. No fixed
+  release was available upstream at the time of this pass; re-check with
+  `pip-audit` and upgrade when one ships.
 
 ## How it works
 
