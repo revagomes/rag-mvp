@@ -16,6 +16,12 @@ env/
 storage/
 *.sqlite3
 
+# Sensitive / private document corpora — MUST NOT be committed to the public repo.
+# Real content lives here locally for testing but is confidential.
+rag_docs/
+sample_docs/*.zip
+*.mhtml
+
 # Caches
 .pytest_cache/
 .ruff_cache/
