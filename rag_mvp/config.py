@@ -52,6 +52,12 @@ class Settings(BaseSettings):
     storage_dir: str = "./storage"
     collection_name: str = "documents"
 
+    # ---- Security ----
+    # Filesystem root that /ingest/path is confined to. Requests to ingest a
+    # path outside this root are rejected. Defaults to the current working
+    # directory, which is where the server is normally launched.
+    ingest_root: str = "."
+
 
 @lru_cache
 def get_settings() -> Settings:

@@ -13,7 +13,6 @@ Run with:  uvicorn rag_mvp.server:app --reload
 from __future__ import annotations
 
 from contextlib import asynccontextmanager
-from pathlib import Path
 
 from fastapi import FastAPI, HTTPException
 
@@ -28,6 +27,7 @@ from .schemas import (
     QueryResponse,
     RetrievedChunkModel,
 )
+from .security import PathNotAllowedError, resolve_within_root
 
 _pipeline: RagPipeline | None = None
 
@@ -82,9 +82,15 @@ def ingest_text(req: IngestTextRequest) -> IngestResponse:
 @app.post("/ingest/path", response_model=IngestResponse)
 def ingest_path(req: IngestPathRequest) -> IngestResponse:
     pipeline = get_pipeline()
-    path = Path(req.path).expanduser()
+    settings = get_settings()
+    # Confine ingestion to the configured root to prevent path traversal and
+    # arbitrary file reads (which could then be exfiltrated via /query).
+    try:
+        path = resolve_within_root(req.path, settings.ingest_root)
+    except PathNotAllowedError as exc:
+        raise HTTPException(status_code=403, detail=str(exc)) from exc
     if not path.exists():
-        raise HTTPException(status_code=404, detail=f"Path not found: {path}")
+        raise HTTPException(status_code=404, detail="Path not found.")
     try:
         if path.is_dir():
             result = pipeline.ingest_directory(path)

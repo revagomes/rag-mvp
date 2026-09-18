@@ -13,13 +13,27 @@ from rag_mvp.pipeline import RagPipeline
 
 
 @pytest.fixture
-def client(fake_embedder, fake_store, fake_llm):
-    settings = Settings(chunk_size=100, chunk_overlap=20, top_k=3, llm_backend="none")
+def client(fake_embedder, fake_store, fake_llm, tmp_path, monkeypatch):
+    # Confine /ingest/path to a temp root the path-based tests write into.
+    ingest_root = tmp_path / "ingest_root"
+    ingest_root.mkdir()
+    settings = Settings(
+        chunk_size=100,
+        chunk_overlap=20,
+        top_k=3,
+        llm_backend="none",
+        ingest_root=str(ingest_root),
+    )
+    # The /ingest/path handler reads settings via get_settings(); point that at
+    # our test settings so the containment root is the temp dir.
+    monkeypatch.setattr(server, "get_settings", lambda: settings)
     pipeline = RagPipeline(
         settings, embedder=fake_embedder, store=fake_store, llm=fake_llm
     )
     server._pipeline = pipeline  # inject before lifespan/get_pipeline runs
-    with TestClient(server.app) as c:
+    c = TestClient(server.app)
+    c.ingest_root = ingest_root  # expose for tests that need an in-root path
+    with c:
         yield c
     server._pipeline = None  # reset global for isolation
 
@@ -51,22 +65,40 @@ class TestIngestText:
 
 
 class TestIngestPath:
-    def test_ingest_path_missing_returns_404(self, client):
+    def test_ingest_path_missing_absolute_outside_root_is_403(self, client):
+        # An absolute path outside the root is rejected before existence check.
         resp = client.post("/ingest/path", json={"path": "/no/such/path/here"})
-        assert resp.status_code == 404
+        assert resp.status_code == 403
 
-    def test_ingest_path_file(self, client, tmp_path):
-        f = tmp_path / "doc.txt"
+    def test_ingest_path_file(self, client):
+        f = client.ingest_root / "doc.txt"
         f.write_text("file content to ingest", encoding="utf-8")
         resp = client.post("/ingest/path", json={"path": str(f)})
         assert resp.status_code == 200
         assert resp.json()["chunks_added"] >= 1
 
-    def test_ingest_path_unsupported_type_is_400(self, client, tmp_path):
-        f = tmp_path / "bad.docx"
+    def test_ingest_path_unsupported_type_is_400(self, client):
+        f = client.ingest_root / "bad.docx"
         f.write_text("x", encoding="utf-8")
         resp = client.post("/ingest/path", json={"path": str(f)})
         assert resp.status_code == 400
+
+    def test_ingest_path_outside_root_is_403(self, client):
+        # Default ingest_root is "." (repo cwd); /etc/passwd is outside it.
+        resp = client.post("/ingest/path", json={"path": "/etc/passwd"})
+        assert resp.status_code == 403
+
+    def test_ingest_path_dotdot_traversal_is_403(self, client):
+        resp = client.post(
+            "/ingest/path", json={"path": "../../../../etc/passwd"}
+        )
+        assert resp.status_code == 403
+
+    def test_ingest_path_404_does_not_echo_path(self, client):
+        # A missing path inside the root should 404 without reflecting the input.
+        resp = client.post("/ingest/path", json={"path": "no_such_file_here.txt"})
+        assert resp.status_code == 404
+        assert "no_such_file_here" not in resp.json()["detail"]
 
 
 class TestQuery:
