@@ -59,6 +59,34 @@ right passages.
 
 ---
 
+## Preparing documents
+
+The ingester accepts `.txt`, `.md`, and `.pdf`. If your source material is
+saved web pages (`.mhtml` — the "Save as / Webpage, Single File" format from
+Chrome/Edge, common for intranet, wiki, or SharePoint exports), convert them to
+clean Markdown first. Raw MHTML is a MIME container full of quoted-printable
+markup, inline CSS, and base64 images that would pollute embeddings.
+
+The bundled converter extracts the main document, strips scripts/styles/nav
+chrome, and produces Markdown that **preserves headings, lists, and
+hyperlinks** (so retrieved chunks keep their `[text](url)` references):
+
+```bash
+# One-time: install the optional conversion dependencies
+uv pip install -e ".[convert]"
+
+# Convert a directory of .mhtml files (or a single file) into Markdown
+python scripts/mhtml_to_markdown.py path/to/mhtml_dir path/to/output_dir
+
+# Then ingest the generated Markdown as usual
+python -m rag_mvp.cli ingest path/to/output_dir
+```
+
+The converter lives in `scripts/` as a standalone utility — it is not part of
+the server runtime and has no effect unless you run it.
+
+---
+
 ## Quick start (HTTP server)
 
 ```bash
