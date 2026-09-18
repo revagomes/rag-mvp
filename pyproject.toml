@@ -3,6 +3,7 @@ name = "rag-mvp"
 version = "0.1.0"
 description = "A minimal, local-first Retrieval-Augmented Generation (RAG) server for testing with local documents."
 readme = "README.md"
+license = "GPL-2.0-or-later"
 requires-python = ">=3.10"
 dependencies = [
     "fastapi>=0.110",

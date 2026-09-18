@@ -198,3 +198,11 @@ CLI/Ollama runs documented above instead. See `[tool.coverage.run].omit` in
    fetched, each with a similarity score (1.0 = identical).
 5. **Generate** — retrieved chunks are formatted into a context block and passed
    to the configured LLM (or returned as-is when the backend is `none`).
+
+
+---
+
+## License
+
+This project is licensed under the **GNU General Public License v2.0 or later**
+(`GPL-2.0-or-later`). See the [LICENSE](LICENSE) file for the full text.
